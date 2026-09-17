@@ -5,23 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Vanguard AR</title>
 
-    <!--
-      A-Frame + MindAR, served from this repo instead of a CDN.
-      cdn.jsdelivr.net is blocked or unreachable on some ISPs (several Indian
-      mobile networks among them), which made AFRAME undefined and hung the app
-      on the loading screen forever. Same-origin files can't fail that way.
-    -->
     <script src="./lib/aframe.min.js"></script>
     <script src="./lib/mindar-image-aframe.prod.js"></script>
 
     <style>
-      html, body {
+      html {
         margin: 0;
         padding: 0;
         overflow: hidden;
         background: #000;
         font-family: -apple-system, Helvetica, Arial, sans-serif;
       }
+      /*
+        IMPORTANT: body must NOT have a background.
+        MindAR injects its camera <video> into <body> at z-index:-2. Since <body>
+        is not a positioned element, its own background paints *after* negative
+        z-index descendants, so any background here hides the camera feed.
+        This was the black screen.
+      */
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: transparent;
+      }
+      a-scene, a-scene canvas { background: transparent !important; }
+
       #loading-overlay {
         position: fixed;
         inset: 0;
@@ -43,15 +52,13 @@
         font-size: 12px;
         opacity: 0.55;
         font-family: ui-monospace, Menlo, Consolas, monospace;
-        max-width: 320px;
-        word-break: break-word;
       }
       #errorbox {
         display: none;
         margin-top: 18px;
         padding: 12px 14px;
         border: 1px solid #a33;
-        background: rgba(170, 40, 40, 0.15);
+        background: rgba(170,40,40,0.15);
         color: #ffb3b3;
         font-size: 13px;
         max-width: 320px;
@@ -59,96 +66,159 @@
         border-radius: 6px;
         line-height: 1.45;
       }
-      #hint {
+
+      /* ---- Card stats HUD ---- */
+      #hud {
         position: fixed;
-        bottom: 24px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 100;
+        padding: 10px 10px 16px;
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        pointer-events: none;
+        box-sizing: border-box;
+      }
+      .card-panel {
+        flex: 0 0 auto;
+        min-width: 170px;
+        background: rgba(8,10,20,0.82);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-left: 4px solid #6cf;
+        border-radius: 8px;
+        padding: 9px 11px;
+        color: #fff;
+      }
+      .card-panel .cp-name {
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.25;
+      }
+      .card-panel .cp-sub {
+        font-size: 10px;
+        opacity: 0.6;
+        margin-bottom: 7px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .cp-stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+        text-align: center;
+      }
+      .cp-stats div span {
+        display: block;
+        font-size: 9px;
+        opacity: 0.55;
+        text-transform: uppercase;
+      }
+      .cp-stats div b { font-size: 14px; font-weight: 700; }
+      .cp-power b  { color: #ff6b6b; }
+      .cp-shield b { color: #6cf; }
+      .cp-crit b   { color: #ffd166; }
+
+      #scan-hint {
+        position: fixed;
+        top: 14px;
         left: 0;
         right: 0;
         text-align: center;
         color: #fff;
-        font-size: 14px;
-        background: rgba(0,0,0,0.5);
-        padding: 10px;
-        z-index: 50;
+        font-size: 13px;
+        z-index: 90;
         pointer-events: none;
-        display: none;
+        text-shadow: 0 1px 4px #000;
       }
-      #hint.visible { display: block; }
+      #scan-hint.hidden { display: none; }
     </style>
   </head>
 
   <body>
     <div id="loading-overlay">
       <h1>Loading Vanguard AR...</h1>
-      <p>Point your camera at one of your cards once loading finishes. Tap the character to attack.</p>
+      <p>Point your camera at one of your cards. Tap a unit to attack.</p>
       <div id="status">starting&hellip;</div>
       <div id="errorbox"></div>
     </div>
 
-    <div id="hint">Point camera at a card &middot; Tap the character to attack</div>
+    <div id="scan-hint">Point the camera at a card</div>
+    <div id="hud"></div>
 
-    <!--
-      NOTE: <a-assets> has been removed on purpose.
-      A-Frame blocks 'renderstart' until every <a-asset-item> finishes downloading,
-      and MindAR only starts its camera on 'renderstart'. With ~3.5 MB of models
-      that meant the whole app sat on the loading screen doing nothing.
-      Models are now loaded lazily straight from their URLs.
-    -->
     <a-scene
-      mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: no; uiError: no;"
-      color-space="sRGB"
-      renderer="colorManagement: true, physicallyCorrectLights: true"
+      mindar-image="imageTargetSrc: ./targets.mind;
+                    autoStart: true;
+                    maxTrack: 4;
+                    missTolerance: 8;
+                    warmupTolerance: 2;
+                    filterMinCF: 0.0001;
+                    filterBeta: 0.005;
+                    uiScanning: no;
+                    uiLoading: no;
+                    uiError: no;"
+      renderer="colorManagement: true; alpha: true; antialias: true"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false"
     >
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-      <!-- TARGET 0: Blaster Blade — has a real clip, plays Basic_Jump on tap -->
-      <a-entity mindar-image-target="targetIndex: 0">
-        <a-entity
-          id="blasterblade"
-          gltf-model="url(./models/BlasterBlade.glb)"
-          scale="0.3 0.3 0.3"
-          position="0 0 0.2"
-          class="attackable"
-          attack="clip: Basic_Jump; timeScale: 1.3"
-        ></a-entity>
+      <a-entity light="type: ambient; intensity: 1.1"></a-entity>
+      <a-entity light="type: directional; intensity: 1.3" position="1 2 2"></a-entity>
+
+      <!--
+        Each target gets a "stand-up" wrapper rotated +90 on X.
+        MindAR's anchor plane lies flat on the card (Z is the card's normal),
+        so a Y-up model needs this to stand on the card instead of lying on it.
+      -->
+
+      <a-entity mindar-image-target="targetIndex: 0" card-anchor="key: blasterblade">
+        <a-entity rotation="90 0 0">
+          <a-entity
+            id="blasterblade"
+            gltf-model="url(./models/BlasterBlade.glb)"
+            auto-fit="height: 1.3"
+            attack="clip: Basic_Jump; timeScale: 1.3"
+            class="attackable"
+          ></a-entity>
+        </a-entity>
       </a-entity>
 
-      <!-- TARGET 1: Flogal — no clips, bump-lunge on tap -->
-      <a-entity mindar-image-target="targetIndex: 1">
-        <a-entity
-          id="flogal"
-          gltf-model="url(./models/Flogal.glb)"
-          scale="0.3 0.3 0.3"
-          position="0 0 0.2"
-          class="attackable"
-          attack
-        ></a-entity>
+      <a-entity mindar-image-target="targetIndex: 1" card-anchor="key: flogal">
+        <a-entity rotation="90 0 0">
+          <a-entity
+            id="flogal"
+            gltf-model="url(./models/Flogal.glb)"
+            auto-fit="height: 1.0"
+            attack
+            class="attackable"
+          ></a-entity>
+        </a-entity>
       </a-entity>
 
-      <!-- TARGET 2: Barcgal — no clips, bump-lunge on tap -->
-      <a-entity mindar-image-target="targetIndex: 2">
-        <a-entity
-          id="barcgal"
-          gltf-model="url(./models/Barcgal.glb)"
-          scale="0.3 0.3 0.3"
-          position="0 0 0.2"
-          class="attackable"
-          attack
-        ></a-entity>
+      <a-entity mindar-image-target="targetIndex: 2" card-anchor="key: barcgal">
+        <a-entity rotation="90 0 0">
+          <a-entity
+            id="barcgal"
+            gltf-model="url(./models/Barcgal.glb)"
+            auto-fit="height: 1.0"
+            attack
+            class="attackable"
+          ></a-entity>
+        </a-entity>
       </a-entity>
 
-      <!-- TARGET 3: Knight Kay — no clips, bump-lunge on tap -->
-      <a-entity mindar-image-target="targetIndex: 3">
-        <a-entity
-          id="knightkay"
-          gltf-model="url(./models/KnightKay.glb)"
-          scale="0.3 0.3 0.3"
-          position="0 0 0.2"
-          class="attackable"
-          attack
-        ></a-entity>
+      <a-entity mindar-image-target="targetIndex: 3" card-anchor="key: knightkay">
+        <a-entity rotation="90 0 0">
+          <a-entity
+            id="knightkay"
+            gltf-model="url(./models/KnightKay.glb)"
+            auto-fit="height: 1.3"
+            attack
+            class="attackable"
+          ></a-entity>
+        </a-entity>
       </a-entity>
     </a-scene>
 
@@ -157,103 +227,151 @@
         var overlay  = document.getElementById('loading-overlay');
         var statusEl = document.getElementById('status');
         var errorEl  = document.getElementById('errorbox');
-        var hintEl   = document.getElementById('hint');
+        var hudEl    = document.getElementById('hud');
+        var hintEl   = document.getElementById('scan-hint');
         var sceneEl  = document.querySelector('a-scene');
         var done     = false;
 
-        function setStatus(msg) {
-          statusEl.textContent = msg;
-        }
-
-        function showError(msg) {
+        function setStatus(m) { statusEl.textContent = m; }
+        function showError(m) {
           errorEl.style.display = 'block';
-          errorEl.innerHTML += msg + '<br>';
+          errorEl.innerHTML += m + '<br>';
         }
-
         function finish() {
           if (done) { return; }
           done = true;
           overlay.classList.add('hidden');
-          hintEl.classList.add('visible');
         }
 
-        // Surface real JS errors instead of hanging on a black screen.
         window.addEventListener('error', function (e) {
           showError('JS error: ' + (e.message || 'unknown'));
         });
 
-        // Fail loudly and usefully if the libraries didn't load.
         if (typeof AFRAME === 'undefined') {
           setStatus('library load failed');
-          showError(
-            '<b>A-Frame did not load.</b><br>' +
-            'Check that <code>lib/aframe.min.js</code> and ' +
-            '<code>lib/mindar-image-aframe.prod.js</code> exist in the repo and ' +
-            'were committed (they are large \u2014 make sure Git did not skip them).'
-          );
+          showError('<b>A-Frame did not load.</b> Check that lib/aframe.min.js is committed.');
           return;
         }
 
-        // ---------- Attack component ----------
-        // Replaces the aframe-extras "animation-mixer" component, which was
-        // referenced in the original file but never actually loaded.
+        var THREE = AFRAME.THREE;
+
+        /* =========================================================
+           CARD DATA
+           Edit freely. Check the numbers against your own printings —
+           I have only filled in the ones I'm reasonably sure of, and
+           Knight Kay in particular you should verify.
+           ========================================================= */
+        var CARDS = {
+          blasterblade: {
+            name: 'Blaster Blade', clan: 'Royal Paladin',
+            grade: 2, power: 9000, shield: 5000, crit: 1
+          },
+          flogal: {
+            name: 'Flogal', clan: 'Royal Paladin',
+            grade: 0, power: 4000, shield: 10000, crit: 1
+          },
+          barcgal: {
+            name: 'Barcgal', clan: 'Royal Paladin',
+            grade: 0, power: 4000, shield: 10000, crit: 1
+          },
+          knightkay: {
+            name: 'Knight Kay', clan: 'Royal Paladin',
+            grade: 1, power: 7000, shield: 5000, crit: 1
+          }
+        };
+
+        /* =========================================================
+           auto-fit — scale the model to a sensible size on the card,
+           centre it, and sit its lowest vertex on the card surface.
+           Removes all hand-tuned scale guesswork.
+           ========================================================= */
+        AFRAME.registerComponent('auto-fit', {
+          schema: { height: { type: 'number', default: 1.2 } },
+          init: function () {
+            var self = this;
+            this.el.addEventListener('model-loaded', function () {
+              var mesh = self.el.getObject3D('mesh');
+              if (!mesh) { return; }
+
+              self.el.object3D.scale.set(1, 1, 1);
+              self.el.object3D.position.set(0, 0, 0);
+              self.el.object3D.updateMatrixWorld(true);
+
+              var box  = new THREE.Box3().setFromObject(mesh);
+              var size = box.getSize(new THREE.Vector3());
+              var ctr  = box.getCenter(new THREE.Vector3());
+              if (!size.y) { return; }
+
+              var s = self.data.height / size.y;
+              self.el.object3D.scale.set(s, s, s);
+              self.el.object3D.position.set(-ctr.x * s, -box.min.y * s, -ctr.z * s);
+            });
+
+            this.el.addEventListener('model-error', function () {
+              showError('Model failed to load: ' + self.el.id);
+            });
+          }
+        });
+
+        /* =========================================================
+           attack — plays the clip if the model has one, otherwise a
+           forward lunge. Also poses the rig at frame 0 on load so it
+           does not sit in its T-pose bind position.
+           ========================================================= */
         AFRAME.registerComponent('attack', {
           schema: {
             clip:      { type: 'string', default: '' },
             timeScale: { type: 'number', default: 1 },
-            bump:      { type: 'number', default: 0.12 }
+            bump:      { type: 'number', default: 0.35 }
           },
-
           init: function () {
             var self = this;
-            this.mixer  = null;
+            this.mixer = null;
             this.action = null;
 
             this.el.addEventListener('model-loaded', function (e) {
               var model = e.detail.model;
               var clips = model.animations || [];
+              if (!self.data.clip || !clips.length) { return; }
 
-              if (self.data.clip && clips.length) {
-                var clip = null;
-                for (var i = 0; i < clips.length; i++) {
-                  if (clips[i].name === self.data.clip) { clip = clips[i]; break; }
-                }
-                if (!clip) { clip = clips[0]; }
-
-                self.mixer  = new AFRAME.THREE.AnimationMixer(model);
-                self.action = self.mixer.clipAction(clip);
-                self.action.setLoop(AFRAME.THREE.LoopOnce);
-                self.action.clampWhenFinished = true;
-                self.action.timeScale = self.data.timeScale;
+              var clip = null;
+              for (var i = 0; i < clips.length; i++) {
+                if (clips[i].name === self.data.clip) { clip = clips[i]; break; }
               }
+              if (!clip) { clip = clips[0]; }
+
+              self.mixer  = new THREE.AnimationMixer(model);
+              self.action = self.mixer.clipAction(clip);
+              self.action.setLoop(THREE.LoopOnce);
+              self.action.clampWhenFinished = true;
+              self.action.timeScale = self.data.timeScale;
+
+              // Stamp frame 0 onto the skeleton, then hold there.
+              // Without this update() the model renders in its T-pose.
+              self.action.play();
+              self.action.time = 0;
+              self.mixer.update(0);
+              self.action.paused = true;
             });
 
-            this.el.addEventListener('model-error', function () {
-              showError('Failed to load model: ' + self.el.id);
-            });
-
-            this.el.addEventListener('click', function () { self.attack(); });
+            this.el.addEventListener('click', function () { self.trigger(); });
           },
 
-          attack: function () {
+          trigger: function () {
             if (this.action) {
-              // Restart the clip from frame 0 on every tap.
               this.action.reset();
+              this.action.paused = false;
               this.action.play();
               return;
             }
-            this.bumpLunge();
-          },
-
-          bumpLunge: function () {
-            var p = this.el.getAttribute('position');
+            var p = this.el.object3D.position;
             var d = this.data.bump;
             this.el.removeAttribute('animation__bump');
             this.el.setAttribute('animation__bump', {
-              property: 'position',
-              from: p.x + ' ' + p.y + ' ' + p.z,
-              to:   p.x + ' ' + p.y + ' ' + (p.z - d),
-              dur: 120,
+              property: 'object3D.position.z',
+              from: p.z,
+              to: p.z + d,
+              dur: 130,
               easing: 'easeOutQuad',
               dir: 'alternate',
               loop: 1
@@ -265,7 +383,48 @@
           }
         });
 
-        // ---------- Tap detection ----------
+        /* =========================================================
+           card-anchor — drives the stats HUD from target found/lost.
+           ========================================================= */
+        var visible = {};
+
+        function renderHud() {
+          var keys = Object.keys(visible).filter(function (k) { return visible[k]; });
+          hintEl.classList.toggle('hidden', keys.length > 0);
+
+          hudEl.innerHTML = keys.map(function (k) {
+            var c = CARDS[k];
+            if (!c) { return ''; }
+            return '' +
+              '<div class="card-panel">' +
+                '<div class="cp-name">' + c.name + '</div>' +
+                '<div class="cp-sub">' + c.clan + '</div>' +
+                '<div class="cp-stats">' +
+                  '<div><span>Gr</span><b>' + c.grade + '</b></div>' +
+                  '<div class="cp-power"><span>Pow</span><b>' + (c.power / 1000) + 'k</b></div>' +
+                  '<div class="cp-shield"><span>Sh</span><b>' + (c.shield / 1000) + 'k</b></div>' +
+                  '<div class="cp-crit"><span>Crit</span><b>' + c.crit + '</b></div>' +
+                '</div>' +
+              '</div>';
+          }).join('');
+        }
+
+        AFRAME.registerComponent('card-anchor', {
+          schema: { key: { type: 'string' } },
+          init: function () {
+            var key = this.data.key;
+            this.el.addEventListener('targetFound', function () {
+              visible[key] = true;
+              renderHud();
+            });
+            this.el.addEventListener('targetLost', function () {
+              visible[key] = false;
+              renderHud();
+            });
+          }
+        });
+
+        /* ---- lifecycle ---- */
         sceneEl.addEventListener('loaded', function () {
           setStatus('scene ready, requesting camera\u2026');
           var cam = sceneEl.querySelector('a-camera');
@@ -275,11 +434,6 @@
           }
         });
 
-        sceneEl.addEventListener('renderstart', function () {
-          setStatus('renderer started, starting AR\u2026');
-        });
-
-        // ---------- MindAR lifecycle ----------
         sceneEl.addEventListener('arReady', function () {
           setStatus('AR ready');
           finish();
@@ -289,22 +443,17 @@
           setStatus('AR failed to start');
           showError(
             '<b>Camera could not start.</b><br>' +
-            '\u2022 The page must be served over <b>https</b> (GitHub Pages is fine).<br>' +
-            '\u2022 Open it in Safari or Chrome, not inside Discord / Instagram / WhatsApp.<br>' +
-            '\u2022 Check camera permission for this site in your browser settings.'
+            '\u2022 Must be served over https.<br>' +
+            '\u2022 Open in Chrome or Safari directly, not inside Discord / Instagram.<br>' +
+            '\u2022 Check camera permission for this site.'
           );
         });
 
-        // ---------- Safety net ----------
-        // If arReady never arrives, don't leave the user staring at a frozen screen.
         setTimeout(function () {
           if (!done) {
-            showError(
-              'Still loading after 25 seconds. If the camera view never appears, ' +
-              'reload the page and allow camera access when prompted.'
-            );
+            showError('Still loading after 30 seconds \u2014 reload and allow camera access.');
           }
-        }, 25000);
+        }, 30000);
       })();
     </script>
   </body>
