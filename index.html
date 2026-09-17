@@ -5,9 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Vanguard AR</title>
 
-    <!-- A-Frame + MindAR (image tracking) -->
-    <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <!--
+      A-Frame + MindAR, served from this repo instead of a CDN.
+      cdn.jsdelivr.net is blocked or unreachable on some ISPs (several Indian
+      mobile networks among them), which made AFRAME undefined and hung the app
+      on the loading screen forever. Same-origin files can't fail that way.
+    -->
+    <script src="./lib/aframe.min.js"></script>
+    <script src="./lib/mindar-image-aframe.prod.js"></script>
 
     <style>
       html, body {
@@ -176,6 +181,18 @@
         window.addEventListener('error', function (e) {
           showError('JS error: ' + (e.message || 'unknown'));
         });
+
+        // Fail loudly and usefully if the libraries didn't load.
+        if (typeof AFRAME === 'undefined') {
+          setStatus('library load failed');
+          showError(
+            '<b>A-Frame did not load.</b><br>' +
+            'Check that <code>lib/aframe.min.js</code> and ' +
+            '<code>lib/mindar-image-aframe.prod.js</code> exist in the repo and ' +
+            'were committed (they are large \u2014 make sure Git did not skip them).'
+          );
+          return;
+        }
 
         // ---------- Attack component ----------
         // Replaces the aframe-extras "animation-mixer" component, which was
