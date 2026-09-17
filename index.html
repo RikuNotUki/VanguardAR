@@ -10,129 +10,64 @@
 
     <style>
       html {
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
+        margin: 0; padding: 0; overflow: hidden;
         background: #000;
         font-family: -apple-system, Helvetica, Arial, sans-serif;
       }
-      /*
-        IMPORTANT: body must NOT have a background.
-        MindAR injects its camera <video> into <body> at z-index:-2. Since <body>
-        is not a positioned element, its own background paints *after* negative
-        z-index descendants, so any background here hides the camera feed.
-        This was the black screen.
-      */
-      body {
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        background: transparent;
-      }
-      a-scene, a-scene canvas { background: transparent !important; }
+      /* body must stay transparent — MindAR's camera <video> sits at z-index:-2
+         under body, and an opaque body background paints over it. */
+      body { margin: 0; padding: 0; overflow: hidden; background: transparent; }
+      a-scene, a-scene canvas { background: transparent !important; touch-action: none; }
 
       #loading-overlay {
-        position: fixed;
-        inset: 0;
-        background: #000;
-        color: #fff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
-        z-index: 999;
-        text-align: center;
-        padding: 24px;
-        box-sizing: border-box;
+        position: fixed; inset: 0; background: #000; color: #fff;
+        display: flex; align-items: center; justify-content: center;
+        flex-direction: column; z-index: 999; text-align: center;
+        padding: 24px; box-sizing: border-box;
       }
       #loading-overlay.hidden { display: none; }
       #loading-overlay h1 { font-size: 20px; margin: 0 0 8px; }
       #loading-overlay p { font-size: 14px; opacity: 0.7; max-width: 320px; margin: 0 0 16px; }
-      #status {
-        font-size: 12px;
-        opacity: 0.55;
-        font-family: ui-monospace, Menlo, Consolas, monospace;
-      }
+      #status { font-size: 12px; opacity: 0.55; font-family: ui-monospace, Menlo, Consolas, monospace; }
       #errorbox {
-        display: none;
-        margin-top: 18px;
-        padding: 12px 14px;
-        border: 1px solid #a33;
-        background: rgba(170,40,40,0.15);
-        color: #ffb3b3;
-        font-size: 13px;
-        max-width: 320px;
-        text-align: left;
-        border-radius: 6px;
-        line-height: 1.45;
+        display: none; margin-top: 18px; padding: 12px 14px;
+        border: 1px solid #a33; background: rgba(170,40,40,0.15); color: #ffb3b3;
+        font-size: 13px; max-width: 320px; text-align: left; border-radius: 6px; line-height: 1.45;
       }
 
-      /* ---- Card stats HUD ---- */
       #hud {
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 100;
-        padding: 10px 10px 16px;
-        display: flex;
-        gap: 8px;
-        overflow-x: auto;
-        pointer-events: none;
-        box-sizing: border-box;
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 100;
+        padding: 10px 10px 16px; display: flex; gap: 8px;
+        overflow-x: auto; pointer-events: none; box-sizing: border-box;
       }
       .card-panel {
-        flex: 0 0 auto;
-        min-width: 170px;
-        background: rgba(8,10,20,0.82);
-        border: 1px solid rgba(255,255,255,0.18);
-        border-left: 4px solid #6cf;
-        border-radius: 8px;
-        padding: 9px 11px;
-        color: #fff;
+        flex: 0 0 auto; min-width: 170px;
+        background: rgba(8,10,20,0.82); border: 1px solid rgba(255,255,255,0.18);
+        border-left: 4px solid #6cf; border-radius: 8px; padding: 9px 11px; color: #fff;
       }
-      .card-panel .cp-name {
-        font-size: 13px;
-        font-weight: 700;
-        line-height: 1.25;
-      }
-      .card-panel .cp-sub {
-        font-size: 10px;
-        opacity: 0.6;
-        margin-bottom: 7px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-      }
-      .cp-stats {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 4px;
-        text-align: center;
-      }
-      .cp-stats div span {
-        display: block;
-        font-size: 9px;
-        opacity: 0.55;
-        text-transform: uppercase;
-      }
+      .card-panel .cp-name { font-size: 13px; font-weight: 700; line-height: 1.25; }
+      .card-panel .cp-sub { font-size: 10px; opacity: 0.6; margin-bottom: 7px; text-transform: uppercase; letter-spacing: 0.06em; }
+      .cp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; }
+      .cp-stats div span { display: block; font-size: 9px; opacity: 0.55; text-transform: uppercase; }
       .cp-stats div b { font-size: 14px; font-weight: 700; }
       .cp-power b  { color: #ff6b6b; }
       .cp-shield b { color: #6cf; }
       .cp-crit b   { color: #ffd166; }
 
       #scan-hint {
-        position: fixed;
-        top: 14px;
-        left: 0;
-        right: 0;
-        text-align: center;
-        color: #fff;
-        font-size: 13px;
-        z-index: 90;
-        pointer-events: none;
-        text-shadow: 0 1px 4px #000;
+        position: fixed; top: 14px; left: 0; right: 0; text-align: center;
+        color: #fff; font-size: 13px; z-index: 90; pointer-events: none; text-shadow: 0 1px 4px #000;
       }
       #scan-hint.hidden { display: none; }
+
+      /* Small on-screen debug line for tap detection — remove once you trust it. */
+      #tap-debug {
+        position: fixed; top: 14px; right: 10px; z-index: 95;
+        font-size: 11px; font-family: ui-monospace, Menlo, Consolas, monospace;
+        color: #9f9; background: rgba(0,0,0,0.55); padding: 4px 8px; border-radius: 5px;
+        opacity: 0; transition: opacity 0.25s; pointer-events: none;
+      }
+      #tap-debug.show { opacity: 1; }
     </style>
   </head>
 
@@ -145,6 +80,7 @@
     </div>
 
     <div id="scan-hint">Point the camera at a card</div>
+    <div id="tap-debug"></div>
     <div id="hud"></div>
 
     <a-scene
@@ -167,13 +103,20 @@
       <a-entity light="type: ambient; intensity: 1.1"></a-entity>
       <a-entity light="type: directional; intensity: 1.3" position="1 2 2"></a-entity>
 
-      <!--
-        Each target gets a "stand-up" wrapper rotated +90 on X.
-        MindAR's anchor plane lies flat on the card (Z is the card's normal),
-        so a Y-up model needs this to stand on the card instead of lying on it.
-      -->
+      <!-- Trackers: purely tracking anchors, no visuals. They report where/whether
+           each card is visible; card-anchor drives the HUD off that. -->
+      <a-entity id="tracker-blasterblade" mindar-image-target="targetIndex: 0" card-anchor="key: blasterblade"></a-entity>
+      <a-entity id="tracker-flogal"       mindar-image-target="targetIndex: 1" card-anchor="key: flogal"></a-entity>
+      <a-entity id="tracker-barcgal"      mindar-image-target="targetIndex: 2" card-anchor="key: barcgal"></a-entity>
+      <a-entity id="tracker-knightkay"    mindar-image-target="targetIndex: 3" card-anchor="key: knightkay"></a-entity>
 
-      <a-entity mindar-image-target="targetIndex: 0" card-anchor="key: blasterblade">
+      <!-- Avatars: siblings of the trackers, NOT nested inside them. screen-lock
+           reads each tracker's pose every frame and re-applies only position and
+           on-screen spin, so the model always stands upright facing the camera
+           and only rotates to match how the card is turned/flipped, instead of
+           tilting in full 3D with every wobble of your hand. -->
+
+      <a-entity screen-lock="target: #tracker-blasterblade">
         <a-entity rotation="90 0 0">
           <a-entity
             id="blasterblade"
@@ -185,7 +128,7 @@
         </a-entity>
       </a-entity>
 
-      <a-entity mindar-image-target="targetIndex: 1" card-anchor="key: flogal">
+      <a-entity screen-lock="target: #tracker-flogal">
         <a-entity rotation="90 0 0">
           <a-entity
             id="flogal"
@@ -197,7 +140,7 @@
         </a-entity>
       </a-entity>
 
-      <a-entity mindar-image-target="targetIndex: 2" card-anchor="key: barcgal">
+      <a-entity screen-lock="target: #tracker-barcgal">
         <a-entity rotation="90 0 0">
           <a-entity
             id="barcgal"
@@ -209,7 +152,7 @@
         </a-entity>
       </a-entity>
 
-      <a-entity mindar-image-target="targetIndex: 3" card-anchor="key: knightkay">
+      <a-entity screen-lock="target: #tracker-knightkay">
         <a-entity rotation="90 0 0">
           <a-entity
             id="knightkay"
@@ -224,23 +167,25 @@
 
     <script>
       (function () {
-        var overlay  = document.getElementById('loading-overlay');
-        var statusEl = document.getElementById('status');
-        var errorEl  = document.getElementById('errorbox');
-        var hudEl    = document.getElementById('hud');
-        var hintEl   = document.getElementById('scan-hint');
-        var sceneEl  = document.querySelector('a-scene');
-        var done     = false;
+        var overlay    = document.getElementById('loading-overlay');
+        var statusEl   = document.getElementById('status');
+        var errorEl    = document.getElementById('errorbox');
+        var hudEl      = document.getElementById('hud');
+        var hintEl     = document.getElementById('scan-hint');
+        var tapDebugEl = document.getElementById('tap-debug');
+        var sceneEl    = document.querySelector('a-scene');
+        var done       = false;
 
         function setStatus(m) { statusEl.textContent = m; }
-        function showError(m) {
-          errorEl.style.display = 'block';
-          errorEl.innerHTML += m + '<br>';
-        }
-        function finish() {
-          if (done) { return; }
-          done = true;
-          overlay.classList.add('hidden');
+        function showError(m) { errorEl.style.display = 'block'; errorEl.innerHTML += m + '<br>'; }
+        function finish() { if (done) return; done = true; overlay.classList.add('hidden'); }
+
+        var tapDebugTimer = null;
+        function flashTapDebug(msg) {
+          tapDebugEl.textContent = msg;
+          tapDebugEl.classList.add('show');
+          clearTimeout(tapDebugTimer);
+          tapDebugTimer = setTimeout(function () { tapDebugEl.classList.remove('show'); }, 1200);
         }
 
         window.addEventListener('error', function (e) {
@@ -254,36 +199,63 @@
         }
 
         var THREE = AFRAME.THREE;
+        var SPIN_AXIS = new THREE.Vector3(0, 0, 1);
 
         /* =========================================================
-           CARD DATA
-           Edit freely. Check the numbers against your own printings —
-           I have only filled in the ones I'm reasonably sure of, and
-           Knight Kay in particular you should verify.
+           CARD DATA — edit freely. Verify against your own printings;
+           Knight Kay in particular I'm not fully certain of.
            ========================================================= */
         var CARDS = {
-          blasterblade: {
-            name: 'Blaster Blade', clan: 'Royal Paladin',
-            grade: 2, power: 9000, shield: 5000, crit: 1
-          },
-          flogal: {
-            name: 'Flogal', clan: 'Royal Paladin',
-            grade: 0, power: 4000, shield: 10000, crit: 1
-          },
-          barcgal: {
-            name: 'Barcgal', clan: 'Royal Paladin',
-            grade: 0, power: 4000, shield: 10000, crit: 1
-          },
-          knightkay: {
-            name: 'Knight Kay', clan: 'Royal Paladin',
-            grade: 1, power: 7000, shield: 5000, crit: 1
-          }
+          blasterblade: { name: 'Blaster Blade', clan: 'Royal Paladin', grade: 2, power: 9000, shield: 5000, crit: 1 },
+          flogal:       { name: 'Flogal',         clan: 'Royal Paladin', grade: 0, power: 4000, shield: 10000, crit: 1 },
+          barcgal:      { name: 'Barcgal',        clan: 'Royal Paladin', grade: 0, power: 4000, shield: 10000, crit: 1 },
+          knightkay:    { name: 'Knight Kay',     clan: 'Royal Paladin', grade: 1, power: 7000, shield: 5000, crit: 1 }
         };
 
         /* =========================================================
-           auto-fit — scale the model to a sensible size on the card,
-           centre it, and sit its lowest vertex on the card surface.
-           Removes all hand-tuned scale guesswork.
+           screen-lock — keeps a model upright and facing the camera,
+           tracking only the card's position and its on-screen spin
+           (the rotation you'd see if you turned the card like a
+           steering wheel), ignoring how far it's tipped toward or
+           away from you. The target entity sits directly under
+           <a-scene> with no transformed ancestors, so its local
+           matrix already IS its pose relative to the camera.
+           ========================================================= */
+        AFRAME.registerComponent('screen-lock', {
+          schema: { target: { type: 'selector' } },
+          init: function () {
+            this.targetObj = this.data.target.object3D;
+            this.pos   = new THREE.Vector3();
+            this.quat  = new THREE.Quaternion();
+            this.scale = new THREE.Vector3();
+            this.up    = new THREE.Vector3();
+            this.el.object3D.visible = false;
+          },
+          tick: function () {
+            var t = this.targetObj;
+            if (!t.visible) {
+              this.el.object3D.visible = false;
+              return;
+            }
+            this.el.object3D.visible = true;
+
+            t.matrix.decompose(this.pos, this.quat, this.scale);
+
+            // The card's up-direction as seen by the camera right now.
+            this.up.set(0, 1, 0).applyQuaternion(this.quat);
+            // Its angle on screen, measured from straight up — this is the
+            // only rotation information we keep.
+            var spin = Math.atan2(-this.up.x, this.up.y);
+
+            this.el.object3D.position.copy(this.pos);
+            this.el.object3D.quaternion.setFromAxisAngle(SPIN_AXIS, spin);
+            this.el.object3D.scale.setScalar(this.scale.x);
+          }
+        });
+
+        /* =========================================================
+           auto-fit — scales the model to a sensible size, centres it,
+           and sits its lowest vertex on the card surface.
            ========================================================= */
         AFRAME.registerComponent('auto-fit', {
           schema: { height: { type: 'number', default: 1.2 } },
@@ -306,7 +278,6 @@
               self.el.object3D.scale.set(s, s, s);
               self.el.object3D.position.set(-ctr.x * s, -box.min.y * s, -ctr.z * s);
             });
-
             this.el.addEventListener('model-error', function () {
               showError('Model failed to load: ' + self.el.id);
             });
@@ -314,9 +285,10 @@
         });
 
         /* =========================================================
-           attack — plays the clip if the model has one, otherwise a
-           forward lunge. Also poses the rig at frame 0 on load so it
-           does not sit in its T-pose bind position.
+           attack — exposes a trigger() method the tap handler below
+           calls directly. Plays the clip if the model has one,
+           otherwise a forward lunge. Poses the rig at frame 0 on load
+           so it doesn't sit in its T-pose bind position.
            ========================================================= */
         AFRAME.registerComponent('attack', {
           schema: {
@@ -346,21 +318,18 @@
               self.action.clampWhenFinished = true;
               self.action.timeScale = self.data.timeScale;
 
-              // Stamp frame 0 onto the skeleton, then hold there.
-              // Without this update() the model renders in its T-pose.
+              // Stamp frame 0 onto the skeleton, then hold there, so the
+              // model shows its pose instead of the raw T-pose bind.
               self.action.play();
               self.action.time = 0;
               self.mixer.update(0);
               self.action.paused = true;
             });
-
-            this.el.addEventListener('click', function () { self.trigger(); });
           },
 
           trigger: function () {
             if (this.action) {
               this.action.reset();
-              this.action.paused = false;
               this.action.play();
               return;
             }
@@ -413,30 +382,70 @@
           schema: { key: { type: 'string' } },
           init: function () {
             var key = this.data.key;
-            this.el.addEventListener('targetFound', function () {
-              visible[key] = true;
-              renderHud();
-            });
-            this.el.addEventListener('targetLost', function () {
-              visible[key] = false;
-              renderHud();
-            });
+            this.el.addEventListener('targetFound', function () { visible[key] = true; renderHud(); });
+            this.el.addEventListener('targetLost',  function () { visible[key] = false; renderHud(); });
           }
         });
+
+        /* =========================================================
+           Tap-to-attack — raycasts directly against the visible
+           models using Three.js, bypassing A-Frame's cursor system
+           entirely (fewer layers, fewer places for it to silently
+           fail). If the tap misses slightly but exactly one card is
+           on screen, it attacks that one anyway.
+           ========================================================= */
+        var raycaster = new THREE.Raycaster();
+        var ndc = new THREE.Vector2();
+
+        function handleTap(clientX, clientY) {
+          var canvas = sceneEl.canvas;
+          if (!canvas || !sceneEl.camera) { return; }
+
+          var rect = canvas.getBoundingClientRect();
+          ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+          ndc.y = -(((clientY - rect.top) / rect.height) * 2 - 1);
+          raycaster.setFromCamera(ndc, sceneEl.camera);
+
+          var meshes = [];
+          var entities = [];
+          document.querySelectorAll('.attackable').forEach(function (el) {
+            if (el.object3D.visible) { meshes.push(el.object3D); entities.push(el); }
+          });
+
+          if (!meshes.length) { flashTapDebug('tap: no card visible'); return; }
+
+          var hits = raycaster.intersectObjects(meshes, true);
+          var hitEl = null;
+
+          if (hits.length) {
+            var obj = hits[0].object;
+            while (obj && !obj.el) { obj = obj.parent; }
+            if (obj && obj.el) { hitEl = obj.el; }
+          }
+
+          if (!hitEl && entities.length === 1) { hitEl = entities[0]; }
+
+          if (hitEl && hitEl.components.attack) {
+            hitEl.components.attack.trigger();
+            flashTapDebug('attack: ' + hitEl.id);
+          } else {
+            flashTapDebug('tap: missed');
+          }
+        }
 
         /* ---- lifecycle ---- */
         sceneEl.addEventListener('loaded', function () {
           setStatus('scene ready, requesting camera\u2026');
-          var cam = sceneEl.querySelector('a-camera');
-          if (cam) {
-            cam.setAttribute('raycaster', 'objects: .attackable');
-            cam.setAttribute('cursor', 'rayOrigin: mouse; fuse: false');
-          }
         });
 
         sceneEl.addEventListener('arReady', function () {
           setStatus('AR ready');
           finish();
+
+          var canvas = sceneEl.canvas;
+          canvas.addEventListener('pointerup', function (evt) {
+            handleTap(evt.clientX, evt.clientY);
+          });
         });
 
         sceneEl.addEventListener('arError', function () {
@@ -450,9 +459,7 @@
         });
 
         setTimeout(function () {
-          if (!done) {
-            showError('Still loading after 30 seconds \u2014 reload and allow camera access.');
-          }
+          if (!done) { showError('Still loading after 30 seconds \u2014 reload and allow camera access.'); }
         }, 30000);
       })();
     </script>
