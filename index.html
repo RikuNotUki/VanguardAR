@@ -1,197 +1,294 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>Vanguard AR</title>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Vanguard AR</title>
 
-  <!-- A-Frame + MindAR (image tracking) -->
-  <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <!-- A-Frame + MindAR (image tracking) -->
+    <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #000;
-      font-family: -apple-system, Helvetica, Arial, sans-serif;
-    }
-    #loading-overlay {
-      position: fixed;
-      inset: 0;
-      background: #000;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      z-index: 999;
-      text-align: center;
-      padding: 24px;
-    }
-    #loading-overlay.hidden { display: none; }
-    #loading-overlay h1 { font-size: 20px; margin-bottom: 8px; }
-    #loading-overlay p { font-size: 14px; opacity: 0.7; max-width: 320px; }
-    #hint {
-      position: fixed;
-      bottom: 24px;
-      left: 0;
-      right: 0;
-      text-align: center;
-      color: #fff;
-      font-size: 14px;
-      background: rgba(0,0,0,0.5);
-      padding: 10px;
-      z-index: 50;
-      pointer-events: none;
-    }
-  </style>
-</head>
-<body>
-
-  <div id="loading-overlay">
-    <h1>Loading Vanguard AR...</h1>
-    <p>Point your camera at one of your cards once loading finishes. Tap the character to attack.</p>
-  </div>
-
-  <div id="hint">Point camera at a card &middot; Tap the character to attack</div>
-
-  <a-scene
-    mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: no;"
-    color-space="sRGB"
-    renderer="colorManagement: true, physicallyCorrectLights: true"
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: true"
-  >
-    <a-assets>
-      <a-asset-item id="blasterblade-model" src="./models/BlasterBlade.glb"></a-asset-item>
-      <a-asset-item id="flogal-model" src="./models/Flogal.glb"></a-asset-item>
-      <a-asset-item id="barcgal-model" src="./models/Barcgal.glb"></a-asset-item>
-      <a-asset-item id="knightkay-model" src="./models/KnightKay.glb"></a-asset-item>
-    </a-assets>
-
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-    <!-- TARGET 0: Blaster Blade (real animated model, plays Basic_Jump on tap) -->
-    <a-entity mindar-image-target="targetIndex: 0">
-      <a-entity
-        id="blasterblade"
-        gltf-model="#blasterblade-model"
-        scale="0.3 0.3 0.3"
-        position="0 0 0.2"
-        rotation="0 0 0"
-        animation-mixer="clip: Basic_Jump; loop: once; clampWhenFinished: true; timeScale: 1.3"
-        class="attackable"
-        data-mode="animation"
-      ></a-entity>
-    </a-entity>
-
-    <!-- TARGET 1: Flogal (real model, no animation - bump-lunge on tap) -->
-    <a-entity mindar-image-target="targetIndex: 1">
-      <a-entity
-        id="flogal"
-        gltf-model="#flogal-model"
-        scale="0.3 0.3 0.3"
-        position="0 0 0.2"
-        rotation="0 0 0"
-        class="attackable"
-        data-mode="bump"
-      ></a-entity>
-    </a-entity>
-
-    <!-- TARGET 2: Barcgal (real model, no animation - bump-lunge on tap) -->
-    <a-entity mindar-image-target="targetIndex: 2">
-      <a-entity
-        id="barcgal"
-        gltf-model="#barcgal-model"
-        scale="0.3 0.3 0.3"
-        position="0 0 0.2"
-        rotation="0 0 0"
-        class="attackable"
-        data-mode="bump"
-      ></a-entity>
-    </a-entity>
-
-    <!-- TARGET 3: Knight Kay (real model, no animation - bump-lunge on tap) -->
-    <a-entity mindar-image-target="targetIndex: 3">
-      <a-entity
-        id="knightkay"
-        gltf-model="#knightkay-model"
-        scale="0.3 0.3 0.3"
-        position="0 0 0.2"
-        rotation="0 0 0"
-        class="attackable"
-        data-mode="bump"
-      ></a-entity>
-    </a-entity>
-
-  </a-scene>
-
-  <script>
-    // Hide the loading overlay once MindAR + A-Frame scene is ready
-    const sceneEl = document.querySelector('a-scene');
-    sceneEl.addEventListener('renderstart', () => {
-      document.getElementById('loading-overlay').classList.add('hidden');
-    });
-
-    // ---- Attack logic ----
-    // Blaster Blade: play the real "Basic_Jump" animation clip (used as the attack anim)
-    // Flogal / Barcgal / Knight Kay: simple Pokemon-style "bump forward and back" using A-Frame's built-in animation component
-
-    function triggerBlasterBladeAttack() {
-      const el = document.getElementById('blasterblade');
-      if (!el) return;
-      // restart the clip from frame 0 each tap
-      el.setAttribute('animation-mixer', 'clip: Basic_Jump; loop: once; clampWhenFinished: true; timeScale: 1.3');
-      const mixer = el.components['animation-mixer'];
-      if (mixer && mixer.mixer) {
-        mixer.mixer.stopAllAction();
-        Object.values(mixer.actions || {}).forEach(a => { a.reset(); a.play(); });
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #000;
+        font-family: -apple-system, Helvetica, Arial, sans-serif;
       }
-    }
+      #loading-overlay {
+        position: fixed;
+        inset: 0;
+        background: #000;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        z-index: 999;
+        text-align: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      #loading-overlay.hidden { display: none; }
+      #loading-overlay h1 { font-size: 20px; margin: 0 0 8px; }
+      #loading-overlay p { font-size: 14px; opacity: 0.7; max-width: 320px; margin: 0 0 16px; }
+      #status {
+        font-size: 12px;
+        opacity: 0.55;
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        max-width: 320px;
+        word-break: break-word;
+      }
+      #errorbox {
+        display: none;
+        margin-top: 18px;
+        padding: 12px 14px;
+        border: 1px solid #a33;
+        background: rgba(170, 40, 40, 0.15);
+        color: #ffb3b3;
+        font-size: 13px;
+        max-width: 320px;
+        text-align: left;
+        border-radius: 6px;
+        line-height: 1.45;
+      }
+      #hint {
+        position: fixed;
+        bottom: 24px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        color: #fff;
+        font-size: 14px;
+        background: rgba(0,0,0,0.5);
+        padding: 10px;
+        z-index: 50;
+        pointer-events: none;
+        display: none;
+      }
+      #hint.visible { display: block; }
+    </style>
+  </head>
 
-    function triggerBumpAttack(elId) {
-      const el = document.getElementById(elId);
-      if (!el) return;
-      const startPos = el.getAttribute('position');
-      const bumpDistance = 0.12; // how far it lunges forward, in scene units
+  <body>
+    <div id="loading-overlay">
+      <h1>Loading Vanguard AR...</h1>
+      <p>Point your camera at one of your cards once loading finishes. Tap the character to attack.</p>
+      <div id="status">starting&hellip;</div>
+      <div id="errorbox"></div>
+    </div>
 
-      // remove any existing animation before starting a new one
-      el.removeAttribute('animation__bump');
+    <div id="hint">Point camera at a card &middot; Tap the character to attack</div>
 
-      el.setAttribute('animation__bump', {
-        property: 'position',
-        from: `${startPos.x} ${startPos.y} ${startPos.z}`,
-        to: `${startPos.x} ${startPos.y} ${startPos.z - bumpDistance}`,
-        dur: 120,
-        easing: 'easeOutQuad',
-        dir: 'alternate',
-        loop: 1
-      });
-    }
+    <!--
+      NOTE: <a-assets> has been removed on purpose.
+      A-Frame blocks 'renderstart' until every <a-asset-item> finishes downloading,
+      and MindAR only starts its camera on 'renderstart'. With ~3.5 MB of models
+      that meant the whole app sat on the loading screen doing nothing.
+      Models are now loaded lazily straight from their URLs.
+    -->
+    <a-scene
+      mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: no; uiError: no;"
+      color-space="sRGB"
+      renderer="colorManagement: true, physicallyCorrectLights: true"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false"
+    >
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-    document.addEventListener('DOMContentLoaded', () => {
-      document.querySelectorAll('.attackable').forEach(el => {
-        el.addEventListener('click', () => {
-          const mode = el.getAttribute('data-mode');
-          if (mode === 'animation') {
-            triggerBlasterBladeAttack();
-          } else {
-            triggerBumpAttack(el.id);
+      <!-- TARGET 0: Blaster Blade — has a real clip, plays Basic_Jump on tap -->
+      <a-entity mindar-image-target="targetIndex: 0">
+        <a-entity
+          id="blasterblade"
+          gltf-model="url(./models/BlasterBlade.glb)"
+          scale="0.3 0.3 0.3"
+          position="0 0 0.2"
+          class="attackable"
+          attack="clip: Basic_Jump; timeScale: 1.3"
+        ></a-entity>
+      </a-entity>
+
+      <!-- TARGET 1: Flogal — no clips, bump-lunge on tap -->
+      <a-entity mindar-image-target="targetIndex: 1">
+        <a-entity
+          id="flogal"
+          gltf-model="url(./models/Flogal.glb)"
+          scale="0.3 0.3 0.3"
+          position="0 0 0.2"
+          class="attackable"
+          attack
+        ></a-entity>
+      </a-entity>
+
+      <!-- TARGET 2: Barcgal — no clips, bump-lunge on tap -->
+      <a-entity mindar-image-target="targetIndex: 2">
+        <a-entity
+          id="barcgal"
+          gltf-model="url(./models/Barcgal.glb)"
+          scale="0.3 0.3 0.3"
+          position="0 0 0.2"
+          class="attackable"
+          attack
+        ></a-entity>
+      </a-entity>
+
+      <!-- TARGET 3: Knight Kay — no clips, bump-lunge on tap -->
+      <a-entity mindar-image-target="targetIndex: 3">
+        <a-entity
+          id="knightkay"
+          gltf-model="url(./models/KnightKay.glb)"
+          scale="0.3 0.3 0.3"
+          position="0 0 0.2"
+          class="attackable"
+          attack
+        ></a-entity>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      (function () {
+        var overlay  = document.getElementById('loading-overlay');
+        var statusEl = document.getElementById('status');
+        var errorEl  = document.getElementById('errorbox');
+        var hintEl   = document.getElementById('hint');
+        var sceneEl  = document.querySelector('a-scene');
+        var done     = false;
+
+        function setStatus(msg) {
+          statusEl.textContent = msg;
+        }
+
+        function showError(msg) {
+          errorEl.style.display = 'block';
+          errorEl.innerHTML += msg + '<br>';
+        }
+
+        function finish() {
+          if (done) { return; }
+          done = true;
+          overlay.classList.add('hidden');
+          hintEl.classList.add('visible');
+        }
+
+        // Surface real JS errors instead of hanging on a black screen.
+        window.addEventListener('error', function (e) {
+          showError('JS error: ' + (e.message || 'unknown'));
+        });
+
+        // ---------- Attack component ----------
+        // Replaces the aframe-extras "animation-mixer" component, which was
+        // referenced in the original file but never actually loaded.
+        AFRAME.registerComponent('attack', {
+          schema: {
+            clip:      { type: 'string', default: '' },
+            timeScale: { type: 'number', default: 1 },
+            bump:      { type: 'number', default: 0.12 }
+          },
+
+          init: function () {
+            var self = this;
+            this.mixer  = null;
+            this.action = null;
+
+            this.el.addEventListener('model-loaded', function (e) {
+              var model = e.detail.model;
+              var clips = model.animations || [];
+
+              if (self.data.clip && clips.length) {
+                var clip = null;
+                for (var i = 0; i < clips.length; i++) {
+                  if (clips[i].name === self.data.clip) { clip = clips[i]; break; }
+                }
+                if (!clip) { clip = clips[0]; }
+
+                self.mixer  = new AFRAME.THREE.AnimationMixer(model);
+                self.action = self.mixer.clipAction(clip);
+                self.action.setLoop(AFRAME.THREE.LoopOnce);
+                self.action.clampWhenFinished = true;
+                self.action.timeScale = self.data.timeScale;
+              }
+            });
+
+            this.el.addEventListener('model-error', function () {
+              showError('Failed to load model: ' + self.el.id);
+            });
+
+            this.el.addEventListener('click', function () { self.attack(); });
+          },
+
+          attack: function () {
+            if (this.action) {
+              // Restart the clip from frame 0 on every tap.
+              this.action.reset();
+              this.action.play();
+              return;
+            }
+            this.bumpLunge();
+          },
+
+          bumpLunge: function () {
+            var p = this.el.getAttribute('position');
+            var d = this.data.bump;
+            this.el.removeAttribute('animation__bump');
+            this.el.setAttribute('animation__bump', {
+              property: 'position',
+              from: p.x + ' ' + p.y + ' ' + p.z,
+              to:   p.x + ' ' + p.y + ' ' + (p.z - d),
+              dur: 120,
+              easing: 'easeOutQuad',
+              dir: 'alternate',
+              loop: 1
+            });
+          },
+
+          tick: function (t, dt) {
+            if (this.mixer) { this.mixer.update(dt / 1000); }
           }
         });
-      });
-    });
 
-    // A-Frame needs raycasting enabled on the camera/cursor to detect taps on 3D entities.
-    // We add a simple cursor that raycasts on click, since we don't have a visible cursor UI.
-    window.addEventListener('load', () => {
-      const camera = document.querySelector('a-camera');
-      camera.setAttribute('raycaster', 'objects: .attackable');
-      camera.setAttribute('cursor', 'rayOrigin: mouse; fuse: false');
-    });
-  </script>
+        // ---------- Tap detection ----------
+        sceneEl.addEventListener('loaded', function () {
+          setStatus('scene ready, requesting camera\u2026');
+          var cam = sceneEl.querySelector('a-camera');
+          if (cam) {
+            cam.setAttribute('raycaster', 'objects: .attackable');
+            cam.setAttribute('cursor', 'rayOrigin: mouse; fuse: false');
+          }
+        });
 
-</body>
+        sceneEl.addEventListener('renderstart', function () {
+          setStatus('renderer started, starting AR\u2026');
+        });
+
+        // ---------- MindAR lifecycle ----------
+        sceneEl.addEventListener('arReady', function () {
+          setStatus('AR ready');
+          finish();
+        });
+
+        sceneEl.addEventListener('arError', function () {
+          setStatus('AR failed to start');
+          showError(
+            '<b>Camera could not start.</b><br>' +
+            '\u2022 The page must be served over <b>https</b> (GitHub Pages is fine).<br>' +
+            '\u2022 Open it in Safari or Chrome, not inside Discord / Instagram / WhatsApp.<br>' +
+            '\u2022 Check camera permission for this site in your browser settings.'
+          );
+        });
+
+        // ---------- Safety net ----------
+        // If arReady never arrives, don't leave the user staring at a frozen screen.
+        setTimeout(function () {
+          if (!done) {
+            showError(
+              'Still loading after 25 seconds. If the camera view never appears, ' +
+              'reload the page and allow camera access when prompted.'
+            );
+          }
+        }, 25000);
+      })();
+    </script>
+  </body>
 </html>
