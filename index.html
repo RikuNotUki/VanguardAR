@@ -45,7 +45,14 @@
         background: rgba(8,10,20,0.82); border: 1px solid rgba(255,255,255,0.18);
         border-left: 4px solid #6cf; border-radius: 8px; padding: 9px 11px; color: #fff;
       }
-      .card-panel .cp-name { font-size: 13px; font-weight: 700; line-height: 1.25; }
+      .card-panel .cp-name { font-size: 13px; font-weight: 700; line-height: 1.25; display: inline-block; }
+      .cp-side {
+        display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 700;
+        padding: 1px 6px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.04em;
+        vertical-align: middle; position: relative; top: -1px;
+      }
+      .cp-side.you { background: rgba(108,255,150,0.18); color: #8dffab; border: 1px solid rgba(108,255,150,0.4); }
+      .cp-side.opp { background: rgba(255,108,108,0.18); color: #ff9d9d; border: 1px solid rgba(255,108,108,0.4); }
       .card-panel .cp-sub { font-size: 10px; opacity: 0.6; margin-bottom: 7px; text-transform: uppercase; letter-spacing: 0.06em; }
       .cp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; }
       .cp-stats div span { display: block; font-size: 9px; opacity: 0.55; text-transform: uppercase; }
@@ -74,7 +81,7 @@
   <body>
     <div id="loading-overlay">
       <h1>Loading Vanguard AR...</h1>
-      <p>Point your camera at one of your cards. Tap a unit to attack.</p>
+      <p>Point your camera at one of your cards. Rotate a card sideways to attack, or tap the unit.</p>
       <div id="status">starting&hellip;</div>
       <div id="errorbox"></div>
     </div>
@@ -116,7 +123,7 @@
            and only rotates to match how the card is turned/flipped, instead of
            tilting in full 3D with every wobble of your hand. -->
 
-      <a-entity screen-lock="target: #tracker-blasterblade">
+      <a-entity screen-lock="target: #tracker-blasterblade; key: blasterblade">
         <a-entity
           id="blasterblade"
           gltf-model="url(./models/BlasterBlade.glb)"
@@ -126,7 +133,7 @@
         ></a-entity>
       </a-entity>
 
-      <a-entity screen-lock="target: #tracker-flogal">
+      <a-entity screen-lock="target: #tracker-flogal; key: flogal">
         <a-entity
           id="flogal"
           gltf-model="url(./models/Flogal.glb)"
@@ -136,7 +143,7 @@
         ></a-entity>
       </a-entity>
 
-      <a-entity screen-lock="target: #tracker-barcgal">
+      <a-entity screen-lock="target: #tracker-barcgal; key: barcgal">
         <a-entity
           id="barcgal"
           gltf-model="url(./models/Barcgal.glb)"
@@ -146,7 +153,7 @@
         ></a-entity>
       </a-entity>
 
-      <a-entity screen-lock="target: #tracker-knightkay">
+      <a-entity screen-lock="target: #tracker-knightkay; key: knightkay">
         <a-entity
           id="knightkay"
           gltf-model="url(./models/KnightKay.glb)"
@@ -205,6 +212,38 @@
         };
 
         /* =========================================================
+           Which physical side a card is on is inferred the same way
+           it works on a real table: both players' cards sit face-up,
+           just rotated ~180 degrees from each other because the two
+           players face each other. So "upright on screen" = your
+           card, "upside-down on screen" = the opponent's. A card
+           that's genuinely face-down can't be read at all — MindAR
+           has nothing to track — so that case is just "not visible",
+           not something to detect separately.
+
+           Zones, by on-screen rotation:
+             upright    (near 0)    -> your card.  Unit faces away
+                                       from you, toward the opponent,
+                                       so you see its BACK.
+             inverted   (near 180)  -> opponent's card. Their unit
+                                       faces toward you, so you see
+                                       its FRONT.
+             horizontal (near ±90)  -> the card has been rested, the
+                                       real-table signal for "this
+                                       unit attacked." Fires the
+                                       attack once per rotation.
+           ========================================================= */
+        function classifyZone(deg, prevZone) {
+          var a = Math.abs(deg);
+          if (Math.abs(a - 90) < 30) { return 'horizontal'; }
+          if (a < 30) { return 'upright'; }
+          if (Math.abs(a - 180) < 30) { return 'inverted'; }
+          return prevZone || 'upright'; // in the gap between zones — keep last state
+        }
+
+        var sideState = {}; // key -> 'you' | 'opp' | null, only for HUD badges
+
+        /* =========================================================
            screen-lock — keeps a model upright and facing the camera,
            tracking only the card's position and its on-screen spin
            (the rotation you'd see if you turned the card like a
@@ -212,35 +251,80 @@
            away from you. The target entity sits directly under
            <a-scene> with no transformed ancestors, so its local
            matrix already IS its pose relative to the camera.
+
+           On top of that spin, it also decides which way the model
+           faces (front or back) from the zone above, and fires the
+           attack the moment the card rotates into the horizontal
+           zone.
            ========================================================= */
         AFRAME.registerComponent('screen-lock', {
-          schema: { target: { type: 'selector' } },
+          schema: { target: { type: 'selector' }, key: { type: 'string', default: '' } },
           init: function () {
-            this.targetObj = this.data.target.object3D;
-            this.pos   = new THREE.Vector3();
-            this.quat  = new THREE.Quaternion();
-            this.scale = new THREE.Vector3();
-            this.up    = new THREE.Vector3();
+            this.targetObj   = this.data.target.object3D;
+            this.attackEl    = this.el.querySelector('.attackable');
+            this.pos         = new THREE.Vector3();
+            this.quat        = new THREE.Quaternion();
+            this.scale       = new THREE.Vector3();
+            this.up          = new THREE.Vector3();
+            this.spinQuat    = new THREE.Quaternion();
+            this.flipQuat    = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+            this.zone        = null;
+            this.showingBack = true; // upright (your side) starts back-facing
             this.el.object3D.visible = false;
           },
           tick: function () {
             var t = this.targetObj;
             if (!t.visible) {
               this.el.object3D.visible = false;
+              this.zone = null;
+              if (this.data.key && sideState[this.data.key] != null) {
+                sideState[this.data.key] = null;
+                renderHud();
+              }
               return;
             }
             this.el.object3D.visible = true;
 
             t.matrix.decompose(this.pos, this.quat, this.scale);
 
-            // The card's up-direction as seen by the camera right now.
+            // The card's up-direction as seen by the camera right now, and
+            // its angle on screen measured from straight up.
             this.up.set(0, 1, 0).applyQuaternion(this.quat);
-            // Its angle on screen, measured from straight up — this is the
-            // only rotation information we keep.
-            var spin = Math.atan2(-this.up.x, this.up.y);
+            var spinRad = Math.atan2(-this.up.x, this.up.y);
+            var deg = spinRad * 180 / Math.PI;
+
+            var newZone = classifyZone(deg, this.zone);
+
+            if (newZone === 'horizontal' && this.zone !== 'horizontal') {
+              // Just rotated into "rested" — this is the attack trigger.
+              if (this.attackEl && this.attackEl.components.attack) {
+                this.attackEl.components.attack.trigger();
+                flashTapDebug('attack (rotated): ' + (this.data.key || this.attackEl.id));
+              }
+            }
+
+            if (newZone !== 'horizontal') {
+              this.showingBack = (newZone === 'upright');
+            } // else: mid-rotation, keep whatever facing it last had
+
+            if (newZone !== this.zone) {
+              this.zone = newZone;
+              if (this.data.key) {
+                sideState[this.data.key] = (newZone === 'horizontal')
+                  ? sideState[this.data.key] // unchanged while resting
+                  : (newZone === 'upright' ? 'you' : 'opp');
+                renderHud();
+              }
+            }
+
+            this.spinQuat.setFromAxisAngle(SPIN_AXIS, spinRad);
+            if (this.showingBack) {
+              this.el.object3D.quaternion.copy(this.spinQuat).multiply(this.flipQuat);
+            } else {
+              this.el.object3D.quaternion.copy(this.spinQuat);
+            }
 
             this.el.object3D.position.copy(this.pos);
-            this.el.object3D.quaternion.setFromAxisAngle(SPIN_AXIS, spin);
             this.el.object3D.scale.setScalar(this.scale.x);
           }
         });
@@ -356,9 +440,13 @@
           hudEl.innerHTML = keys.map(function (k) {
             var c = CARDS[k];
             if (!c) { return ''; }
+            var side = sideState[k];
+            var badge = side
+              ? '<span class="cp-side ' + side + '">' + (side === 'you' ? 'You' : 'Opp') + '</span>'
+              : '';
             return '' +
               '<div class="card-panel">' +
-                '<div class="cp-name">' + c.name + '</div>' +
+                '<div class="cp-name">' + c.name + badge + '</div>' +
                 '<div class="cp-sub">' + c.clan + '</div>' +
                 '<div class="cp-stats">' +
                   '<div><span>Gr</span><b>' + c.grade + '</b></div>' +
