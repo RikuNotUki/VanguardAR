@@ -267,6 +267,7 @@
             this.scale       = new THREE.Vector3();
             this.up          = new THREE.Vector3();
             this.spinQuat    = new THREE.Quaternion();
+            this.desiredQuat = new THREE.Quaternion();
             this.flipQuat    = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
             this.zone        = null;
             this.showingBack = true; // upright (your side) starts back-facing
@@ -317,14 +318,30 @@
               }
             }
 
-            this.spinQuat.setFromAxisAngle(SPIN_AXIS, spinRad);
+            // The on-screen roll actually applied to the model. This is
+            // NOT the raw card spin — that was the bug: the opponent's
+            // card sits at ~180 degrees by design (it's printed to be
+            // read from their side of the table), and directly copying
+            // that spin onto the model rotated it upside down along with
+            // the card. The model should stand upright on screen in both
+            // vertical zones, differing only by which side it shows
+            // (handled above by showingBack) — the only zone that should
+            // visibly roll the model is "resting" (horizontal), where
+            // leaning over with the card is the whole point.
+            var rollDeg = (newZone === 'horizontal') ? (deg >= 0 ? 90 : -90) : 0;
+
+            this.spinQuat.setFromAxisAngle(SPIN_AXIS, rollDeg * Math.PI / 180);
             if (this.showingBack) {
-              this.el.object3D.quaternion.copy(this.spinQuat).multiply(this.flipQuat);
+              this.desiredQuat.copy(this.spinQuat).multiply(this.flipQuat);
             } else {
-              this.el.object3D.quaternion.copy(this.spinQuat);
+              this.desiredQuat.copy(this.spinQuat);
             }
 
             this.el.object3D.position.copy(this.pos);
+            // Smoothly ease toward the target orientation each frame instead
+            // of snapping instantly, so zone changes (e.g. crossing into
+            // "resting") don't pop abruptly.
+            this.el.object3D.quaternion.slerp(this.desiredQuat, 0.25);
             this.el.object3D.scale.setScalar(this.scale.x);
           }
         });
